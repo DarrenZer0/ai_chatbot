@@ -4,9 +4,10 @@ import os
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QListWidget, QPushButton,
     QTextEdit, QLineEdit, QLabel, QFileDialog, QMessageBox,
-    QVBoxLayout, QHBoxLayout, QDialog, QListWidgetItem
+    QVBoxLayout, QHBoxLayout, QDialog, QListWidgetItem, QSplitter
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 
 from persona import Persona
 from persona_storage import load_persona, save_persona
@@ -72,11 +73,11 @@ class MainWindow(QMainWindow):
         self.resize(1100, 650)
 
         self.current_persona = None
-        self.messages = []
 
         # Sidebar
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(180)
+        self.sidebar.setMinimumWidth(180)
+        self.sidebar.setMaximumWidth(220)
         self.sidebar.itemClicked.connect(self.select_persona)
 
         add_btn = QPushButton("+ Add Character")
@@ -86,12 +87,18 @@ class MainWindow(QMainWindow):
         add_btn.clicked.connect(self.add_persona)
         edit_btn.clicked.connect(self.edit_persona)
         del_btn.clicked.connect(self.delete_persona)
-        
 
         sidebar_layout = QVBoxLayout()
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setSpacing(6)
         sidebar_layout.setContentsMargins(8, 8, 8, 8)
-        sidebar_layout.addWidget(QLabel("Characters"))
+
+        title = QLabel("CHARACTERS")
+        title.setStyleSheet("""
+            font-size: 12px;
+            font-weight: bold;
+            color: #8b949e;
+        """)
+        sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.sidebar)
         sidebar_layout.addWidget(add_btn)
         sidebar_layout.addWidget(edit_btn)
@@ -122,14 +129,15 @@ class MainWindow(QMainWindow):
         chat_widget = QWidget()
         chat_widget.setLayout(chat_layout)
 
-        # Main layout
-        main_layout = QHBoxLayout()
-        main_layout.addWidget(sidebar_widget, 0)
-        main_layout.addWidget(chat_widget, 1)
+        # Splitter layout
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(sidebar_widget)
+        splitter.addWidget(chat_widget)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([200, 900])
 
-        container = QWidget()
-        container.setLayout(main_layout)
-        self.setCentralWidget(container)
+        self.setCentralWidget(splitter)
 
         self.load_personas()
 
@@ -139,10 +147,20 @@ class MainWindow(QMainWindow):
     def load_personas(self):
         self.sidebar.clear()
         os.makedirs(PERSONA_DIR, exist_ok=True)
+        os.makedirs(AVATAR_DIR, exist_ok=True)
 
-        for file in os.listdir(PERSONA_DIR):
-            if file.endswith(".json"):
-                self.sidebar.addItem(QListWidgetItem(file[:-5]))
+        for filename in os.listdir(PERSONA_DIR):
+            if not filename.endswith(".json"):
+                continue
+
+            name = filename[:-5]
+            item = QListWidgetItem(name)
+
+            avatar_path = os.path.join(AVATAR_DIR, f"{name}.png")
+            if os.path.exists(avatar_path):
+                item.setIcon(QIcon(avatar_path))
+
+            self.sidebar.addItem(item)
 
     def select_persona(self, item):
         path = os.path.join(PERSONA_DIR, f"{item.text()}.json")
@@ -198,10 +216,7 @@ class MainWindow(QMainWindow):
         self.chat_area.append(f"<b>You:</b> {text}")
 
         reply = chat_with_ai(text)
-
-        self.chat_area.append(
-            f"<b>{self.current_persona.name}:</b> {reply}"
-        )
+        self.chat_area.append(f"<b>{self.current_persona.name}:</b> {reply}")
 
 
 # =============================
@@ -216,8 +231,19 @@ def apply_theme(app):
             font-size: 14px;
         }
         QListWidget {
+            background-color: #0b0f14;
+            border: none;
+            padding: 4px;
+        }
+        QListWidget::item {
+            padding: 8px 10px;
+            border-radius: 6px;
+        }
+        QListWidget::item:selected {
+            background-color: #1f6feb;
+        }
+        QListWidget::item:hover {
             background-color: #161b22;
-            border: 1px solid #30363d;
         }
         QTextEdit {
             background-color: #0d1117;
@@ -232,8 +258,9 @@ def apply_theme(app):
         QPushButton {
             background-color: #1f6feb;
             border-radius: 6px;
-            padding: 6px;
+            padding: 6px 10px;
             min-height: 28px;
+            font-size: 13px;
         }
         QPushButton:hover {
             background-color: #388bfd;
