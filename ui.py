@@ -6,8 +6,8 @@ from PySide6.QtWidgets import (
     QTextEdit, QLineEdit, QLabel, QFileDialog, QMessageBox,
     QVBoxLayout, QHBoxLayout, QDialog, QListWidgetItem, QSplitter
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QPainterPath
 
 from persona import Persona
 from persona_storage import load_persona, save_persona
@@ -16,6 +16,37 @@ from backend import chat_with_ai, set_persona
 
 PERSONA_DIR = "personas"
 AVATAR_DIR = "avatars"
+
+SIDEBAR_ITEM_HEIGHT = 48
+AVATAR_SIZE = 36
+
+
+def make_circular_icon(image_path: str, size: int) -> QIcon:
+    pixmap = QPixmap(image_path)
+    if pixmap.isNull():
+        return QIcon()
+
+    pixmap = pixmap.scaled(
+        size,
+        size,
+        Qt.KeepAspectRatioByExpanding,
+        Qt.SmoothTransformation
+    )
+
+    result = QPixmap(size, size)
+    result.fill(Qt.transparent)
+
+    painter = QPainter(result)
+    painter.setRenderHint(QPainter.Antialiasing)
+
+    path = QPainterPath()
+    path.addEllipse(0, 0, size, size)
+    painter.setClipPath(path)
+
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+
+    return QIcon(result)
 
 
 # =============================
@@ -31,10 +62,13 @@ class PersonaEditor(QDialog):
 
         self.name_input = QLineEdit()
         self.desc_input = QTextEdit()
+        self.avatar_label = QLabel("No avatar selected")
 
+        avatar_btn = QPushButton("Choose Avatar")
         save_btn = QPushButton("Save")
         cancel_btn = QPushButton("Cancel")
 
+        avatar_btn.clicked.connect(self.choose_avatar)
         save_btn.clicked.connect(self.accept)
         cancel_btn.clicked.connect(self.reject)
 
@@ -43,8 +77,10 @@ class PersonaEditor(QDialog):
         layout.addWidget(self.name_input)
         layout.addWidget(QLabel("Personality / System Prompt"))
         layout.addWidget(self.desc_input)
+        layout.addWidget(self.avatar_label)
 
         btns = QHBoxLayout()
+        btns.addWidget(avatar_btn)
         btns.addStretch()
         btns.addWidget(save_btn)
         btns.addWidget(cancel_btn)
@@ -54,6 +90,20 @@ class PersonaEditor(QDialog):
         if persona:
             self.name_input.setText(persona.name)
             self.desc_input.setText(persona.description)
+            self.avatar_label.setText(persona.avatar_path or "No avatar selected")
+
+    def choose_avatar(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose Avatar", "", "Images (*.png *.jpg *.jpeg *.webp)"
+        )
+        if path:
+            os.makedirs(AVATAR_DIR, exist_ok=True)
+            dest = os.path.join(AVATAR_DIR, os.path.basename(path))
+            if path != dest:
+                with open(path, "rb") as s, open(dest, "wb") as d:
+                    d.write(s.read())
+            self.avatar_path = dest
+            self.avatar_label.setText(dest)
 
     def get_persona(self):
         return Persona(
@@ -79,6 +129,15 @@ class MainWindow(QMainWindow):
         self.sidebar.setMinimumWidth(180)
         self.sidebar.setMaximumWidth(220)
         self.sidebar.itemClicked.connect(self.select_persona)
+        self.sidebar.setIconSize(QSize(AVATAR_SIZE, AVATAR_SIZE))
+        self.sidebar.setSpacing(4)
+        self.sidebar.setUniformItemSizes(True)
+
+        self.sidebar.setStyleSheet(self.sidebar.styleSheet() + """
+            QListWidget::item {
+                text-align: left;
+            }
+        """)
 
         add_btn = QPushButton("+ Add Character")
         edit_btn = QPushButton("Edit")
@@ -147,18 +206,21 @@ class MainWindow(QMainWindow):
     def load_personas(self):
         self.sidebar.clear()
         os.makedirs(PERSONA_DIR, exist_ok=True)
-        os.makedirs(AVATAR_DIR, exist_ok=True)
 
         for filename in os.listdir(PERSONA_DIR):
             if not filename.endswith(".json"):
                 continue
 
-            name = filename[:-5]
-            item = QListWidgetItem(name)
+            path = os.path.join(PERSONA_DIR, filename)
+            persona = load_persona(path)
 
-            avatar_path = os.path.join(AVATAR_DIR, f"{name}.png")
-            if os.path.exists(avatar_path):
-                item.setIcon(QIcon(avatar_path))
+            item = QListWidgetItem(persona.name)
+            item.setSizeHint(QSize(0, SIDEBAR_ITEM_HEIGHT))
+
+            if persona.avatar_path and os.path.exists(persona.avatar_path):
+                item.setIcon(
+                    make_circular_icon(persona.avatar_path, AVATAR_SIZE)
+                )
 
             self.sidebar.addItem(item)
 
@@ -233,18 +295,27 @@ def apply_theme(app):
         QListWidget {
             background-color: #0b0f14;
             border: none;
-            padding: 4px;
+            padding: 6px;
         }
+
         QListWidget::item {
-            padding: 8px 10px;
-            border-radius: 6px;
+            padding: 6px 10px;
+            border-radius: 8px;
         }
+
         QListWidget::item:selected {
             background-color: #1f6feb;
+            color: white;
         }
+
         QListWidget::item:hover {
             background-color: #161b22;
         }
+
+        QListWidget::item:selected:!active {
+            background-color: #1f6feb;
+        }
+
         QTextEdit {
             background-color: #0d1117;
             border: 1px solid #30363d;
