@@ -30,13 +30,10 @@ class PersonaEditor(QDialog):
 
         self.name_input = QLineEdit()
         self.desc_input = QTextEdit()
-        self.avatar_label = QLabel("No avatar selected")
 
-        avatar_btn = QPushButton("Choose Avatar")
         save_btn = QPushButton("Save")
         cancel_btn = QPushButton("Cancel")
 
-        avatar_btn.clicked.connect(self.choose_avatar)
         save_btn.clicked.connect(self.accept)
         cancel_btn.clicked.connect(self.reject)
 
@@ -45,10 +42,8 @@ class PersonaEditor(QDialog):
         layout.addWidget(self.name_input)
         layout.addWidget(QLabel("Personality / System Prompt"))
         layout.addWidget(self.desc_input)
-        layout.addWidget(self.avatar_label)
 
         btns = QHBoxLayout()
-        btns.addWidget(avatar_btn)
         btns.addStretch()
         btns.addWidget(save_btn)
         btns.addWidget(cancel_btn)
@@ -58,20 +53,6 @@ class PersonaEditor(QDialog):
         if persona:
             self.name_input.setText(persona.name)
             self.desc_input.setText(persona.description)
-            self.avatar_label.setText(persona.avatar_path or "No avatar selected")
-
-    def choose_avatar(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Choose Avatar", "", "Images (*.png *.jpg *.jpeg *.webp)"
-        )
-        if path:
-            os.makedirs(AVATAR_DIR, exist_ok=True)
-            dest = os.path.join(AVATAR_DIR, os.path.basename(path))
-            if path != dest:
-                with open(path, "rb") as s, open(dest, "wb") as d:
-                    d.write(s.read())
-            self.avatar_path = dest
-            self.avatar_label.setText(dest)
 
     def get_persona(self):
         return Persona(
@@ -95,7 +76,7 @@ class MainWindow(QMainWindow):
 
         # Sidebar
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(260)
+        self.sidebar.setFixedWidth(180)
         self.sidebar.itemClicked.connect(self.select_persona)
 
         add_btn = QPushButton("+ Add Character")
@@ -105,8 +86,11 @@ class MainWindow(QMainWindow):
         add_btn.clicked.connect(self.add_persona)
         edit_btn.clicked.connect(self.edit_persona)
         del_btn.clicked.connect(self.delete_persona)
+        
 
         sidebar_layout = QVBoxLayout()
+        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(8, 8, 8, 8)
         sidebar_layout.addWidget(QLabel("Characters"))
         sidebar_layout.addWidget(self.sidebar)
         sidebar_layout.addWidget(add_btn)
@@ -140,8 +124,8 @@ class MainWindow(QMainWindow):
 
         # Main layout
         main_layout = QHBoxLayout()
-        main_layout.addWidget(sidebar_widget)
-        main_layout.addWidget(chat_widget)
+        main_layout.addWidget(sidebar_widget, 0)
+        main_layout.addWidget(chat_widget, 1)
 
         container = QWidget()
         container.setLayout(main_layout)
@@ -248,13 +232,14 @@ def apply_theme(app):
         QPushButton {
             background-color: #1f6feb;
             border-radius: 6px;
-            padding: 8px;
+            padding: 6px;
+            min-height: 28px;
         }
         QPushButton:hover {
             background-color: #388bfd;
         }
         QLabel {
-            font-weight: bold;
+            font-weight: normal;
         }
     """)
 
