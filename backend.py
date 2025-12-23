@@ -1,18 +1,24 @@
 import ollama
+from persona import Persona
 
 messages = []
+current_persona = None
 
-def chat_with_ai(prompt):
-    try:
-        messages.append({"role": "user", "content": prompt})
+def set_persona(persona: Persona):
+    global messages, current_persona
+    current_persona = persona
+    messages = [{
+        "role": "system",
+        "content": persona.system_prompt()
+    }]
 
-        response = ollama.chat(
-            model="llama3.1",
-            messages=messages
-        )
+def chat_with_ai(text: str) -> str:
+    messages.append({"role": "user", "content": text})
 
-        messages.append(response["message"])
-        return response["message"]["content"]
+    response = ollama.chat(
+        model="llama3.1",
+        messages=messages
+    )
 
-    except Exception as e:
-        return f"[Error] Ollama is not running.\n{e}"
+    messages.append(response["message"])
+    return response["message"]["content"]
