@@ -17,14 +17,17 @@ from backend import chat_with_ai, set_persona
 PERSONA_DIR = "personas"
 AVATAR_DIR = "avatars"
 
-SIDEBAR_ITEM_HEIGHT = 48
+SIDEBAR_ITEM_HEIGHT = 56
 AVATAR_SIZE = 36
 
 
-def make_circular_icon(image_path: str, size: int) -> QIcon:
+# =============================
+# Avatar utilities
+# =============================
+def make_circular_pixmap(image_path: str, size: int) -> QPixmap:
     pixmap = QPixmap(image_path)
     if pixmap.isNull():
-        return QIcon()
+        return QPixmap()
 
     pixmap = pixmap.scaled(
         size,
@@ -46,7 +49,42 @@ def make_circular_icon(image_path: str, size: int) -> QIcon:
     painter.drawPixmap(0, 0, pixmap)
     painter.end()
 
-    return QIcon(result)
+    return result
+
+
+# =============================
+# Sidebar character widget
+# =============================
+class CharacterItemWidget(QWidget):
+    def __init__(self, persona: Persona):
+        super().__init__()
+
+        avatar_label = QLabel()
+        avatar_label.setFixedSize(AVATAR_SIZE, AVATAR_SIZE)
+
+        if persona.avatar_path and os.path.exists(persona.avatar_path):
+            avatar_label.setPixmap(
+                make_circular_pixmap(persona.avatar_path, AVATAR_SIZE)
+            )
+
+        name_label = QLabel(persona.name)
+        name_label.setStyleSheet("font-weight: 600;")
+
+        subtitle = QLabel("Click to chat")
+        subtitle.setStyleSheet(
+            "color: #8b949e; font-size: 11px;"
+        )
+
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(0)
+        text_layout.addWidget(name_label)
+        text_layout.addWidget(subtitle)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(10)
+        layout.addWidget(avatar_label)
+        layout.addLayout(text_layout)
 
 
 # =============================
@@ -126,18 +164,10 @@ class MainWindow(QMainWindow):
 
         # Sidebar
         self.sidebar = QListWidget()
-        self.sidebar.setMinimumWidth(180)
-        self.sidebar.setMaximumWidth(220)
+        self.sidebar.setMinimumWidth(200)
+        self.sidebar.setMaximumWidth(260)
         self.sidebar.itemClicked.connect(self.select_persona)
-        self.sidebar.setIconSize(QSize(AVATAR_SIZE, AVATAR_SIZE))
         self.sidebar.setSpacing(4)
-        self.sidebar.setUniformItemSizes(True)
-
-        self.sidebar.setStyleSheet(self.sidebar.styleSheet() + """
-            QListWidget::item {
-                text-align: left;
-            }
-        """)
 
         add_btn = QPushButton("+ Add Character")
         edit_btn = QPushButton("Edit")
@@ -148,7 +178,6 @@ class MainWindow(QMainWindow):
         del_btn.clicked.connect(self.delete_persona)
 
         sidebar_layout = QVBoxLayout()
-        sidebar_layout.setSpacing(6)
         sidebar_layout.setContentsMargins(8, 8, 8, 8)
 
         title = QLabel("CHARACTERS")
@@ -157,6 +186,7 @@ class MainWindow(QMainWindow):
             font-weight: bold;
             color: #8b949e;
         """)
+
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.sidebar)
         sidebar_layout.addWidget(add_btn)
@@ -188,13 +218,10 @@ class MainWindow(QMainWindow):
         chat_widget = QWidget()
         chat_widget.setLayout(chat_layout)
 
-        # Splitter layout
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(sidebar_widget)
         splitter.addWidget(chat_widget)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([200, 900])
+        splitter.setSizes([240, 860])
 
         self.setCentralWidget(splitter)
 
@@ -214,24 +241,27 @@ class MainWindow(QMainWindow):
             path = os.path.join(PERSONA_DIR, filename)
             persona = load_persona(path)
 
-            item = QListWidgetItem(persona.name)
+            item = QListWidgetItem()
             item.setSizeHint(QSize(0, SIDEBAR_ITEM_HEIGHT))
+            item.setData(Qt.UserRole, persona.name)
 
-            if persona.avatar_path and os.path.exists(persona.avatar_path):
-                item.setIcon(
-                    make_circular_icon(persona.avatar_path, AVATAR_SIZE)
-                )
+            widget = CharacterItemWidget(persona)
 
             self.sidebar.addItem(item)
+            self.sidebar.setItemWidget(item, widget)
 
     def select_persona(self, item):
-        path = os.path.join(PERSONA_DIR, f"{item.text()}.json")
+        name = item.data(Qt.UserRole)
+        path = os.path.join(PERSONA_DIR, f"{name}.json")
+
         self.current_persona = load_persona(path)
         set_persona(self.current_persona)
 
         self.chat_area.clear()
-        self.chat_area.append(
-            f"<i>Now chatting as <b>{self.current_persona.name}</b></i>"
+        self.append_message(
+            self.current_persona.name,
+            "Ready to chat.",
+            self.current_persona.avatar_path
         )
 
     def add_persona(self):
@@ -247,7 +277,8 @@ class MainWindow(QMainWindow):
         item = self.sidebar.currentItem()
         if not item:
             return
-        path = os.path.join(PERSONA_DIR, f"{item.text()}.json")
+        name = item.data(Qt.UserRole)
+        path = os.path.join(PERSONA_DIR, f"{name}.json")
         persona = load_persona(path)
         dlg = PersonaEditor(self, persona)
         if dlg.exec():
@@ -258,13 +289,54 @@ class MainWindow(QMainWindow):
         item = self.sidebar.currentItem()
         if not item:
             return
-        os.remove(os.path.join(PERSONA_DIR, f"{item.text()}.json"))
+        name = item.data(Qt.UserRole)
+        os.remove(os.path.join(PERSONA_DIR, f"{name}.json"))
         self.load_personas()
         self.chat_area.clear()
 
     # =========================
     # Chat
     # =========================
+    def append_message(self, sender, text, avatar_path=None, is_user=False):
+        avatar_html = ""
+        if avatar_path and os.path.exists(avatar_path):
+            avatar_html = f"""
+        <img src="{avatar_path}" width="32" height="32"
+             style="border-radius:16px;">
+        """
+
+        if is_user:
+            html = f"""
+        <table width="100%" cellspacing="0" cellpadding="6">
+            <tr>
+                <td align="right" width="100%">
+                    <div style="color:#58a6ff; font-weight:600;">You</div>
+                    <div>{text}</div>
+                </td>
+                <td align="right">
+                    {avatar_html}
+                </td>
+            </tr>
+        </table>
+        """
+        else:
+            html = f"""
+        <table width="100%" cellspacing="0" cellpadding="6">
+            <tr>
+                <td align="left" width="40">
+                    {avatar_html}
+                </td>
+                <td align="left" width="100%">
+                    <div style="color:#7ee787; font-weight:600;">{sender}</div>
+                    <div>{text}</div>
+                </td>
+            </tr>
+        </table>
+        """
+
+        self.chat_area.append(html)
+
+
     def send_message(self):
         if not self.current_persona:
             QMessageBox.warning(self, "No character", "Select a character first.")
@@ -275,10 +347,14 @@ class MainWindow(QMainWindow):
             return
 
         self.input_field.clear()
-        self.chat_area.append(f"<b>You:</b> {text}")
+        self.append_message("You", text, is_user=True)
 
         reply = chat_with_ai(text)
-        self.chat_area.append(f"<b>{self.current_persona.name}:</b> {reply}")
+        self.append_message(
+            self.current_persona.name,
+            reply,
+            avatar_path=self.current_persona.avatar_path
+        )
 
 
 # =============================
@@ -292,52 +368,37 @@ def apply_theme(app):
             color: #c9d1d9;
             font-size: 14px;
         }
+
         QListWidget {
             background-color: #0b0f14;
             border: none;
-            padding: 6px;
-        }
-
-        QListWidget::item {
-            padding: 6px 10px;
-            border-radius: 8px;
         }
 
         QListWidget::item:selected {
-            background-color: #1f6feb;
-            color: white;
-        }
-
-        QListWidget::item:hover {
             background-color: #161b22;
         }
 
-        QListWidget::item:selected:!active {
-            background-color: #1f6feb;
+        QTextEdit {
+            background-color: #0b0f14;
+            border: none;
+            padding: 10px;
         }
 
-        QTextEdit {
-            background-color: #0d1117;
-            border: 1px solid #30363d;
-        }
         QLineEdit {
             background-color: #161b22;
             border: 1px solid #30363d;
             padding: 8px;
             border-radius: 6px;
         }
+
         QPushButton {
             background-color: #1f6feb;
             border-radius: 6px;
             padding: 6px 10px;
-            min-height: 28px;
-            font-size: 13px;
         }
+
         QPushButton:hover {
             background-color: #388bfd;
-        }
-        QLabel {
-            font-weight: normal;
         }
     """)
 
